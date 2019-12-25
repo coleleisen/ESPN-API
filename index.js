@@ -20,14 +20,14 @@ app.use((req, res, next) => {
  // res.header('Access-Control-Allow-Origin', '*')
   //Could be list of allowed headers, here '*' means all headers
   res.header('Access-Control-Allow-Headers', '*')
-/*
+
   if (req.method === 'OPTIONS') {
       // Update to include all methods
       res.header('Access-Control-Allow-Methods', 'PUT, POST')
       // dont process further if options request and will res here
       return res.status(200).json({})
   }
-  */
+  
   next();
 })
 

@@ -4,19 +4,19 @@ const router = express.Router();
 
 router.post('/', (req, res, next)=>{
     if(!req.body.username){
-        res.status(200).json({
+        return res.status(200).json({
             message: "must include username", status : "fail"
             })
     }
     else
     if(!req.body.password){
-        res.status(200).json({
+        return res.status(200).json({
             message: "must include password", status : "fail"
             })
     }
     else
     if(!req.body.league){
-        res.status(200).json({
+        return res.status(200).json({
             message: "must include league", status : "fail"
             })
     }
@@ -28,12 +28,12 @@ else{
    })()
    .catch(console.error, ()=>{
     let resp = JSON.parse('{ "status": "fail", "message": "error scraping" }')
-   res.status(500).json(resp)
+  return res.status(500).json(resp)
    })
    .then(()=> {
    console.log("noice");
    let resp = JSON.parse('{ "status": "success", "message": "completed scrape and placed in db" }')
-   res.status(200).json(resp)
+   return res.status(200).json(resp)
    });
 }
 })

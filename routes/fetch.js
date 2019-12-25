@@ -10,7 +10,7 @@ const connectionString = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_
 router.post('/', (req, res, next)=>{
     
     if(!req.body.league){
-        res.status(200).json({
+        return res.status(200).json({
             message: "must include league name", status : "fail"
             })
     }
@@ -28,18 +28,19 @@ router.post('/', (req, res, next)=>{
        League = mongoose.model("League", league);
        League.findOne({ 'leagueName': req.body.league }, function (err, leagueObj) {
         if (err){
-            res.status(200).json({ message: err, status : "fail"})
-            return handleError(err);
+            handleError(err);
+            return res.status(200).json({ message: err, status : "fail"})
+            
         } 
         else
         if(leagueObj==null){
-            res.status(200).json({
+           return  res.status(200).json({
                 message: "no league found with that name", status : "fail"
                 })
         }
         else{
             console.log(leagueObj);
-            res.status(200).json(leagueObj);
+            return res.status(200).json(leagueObj);
         }      
       })
     })
