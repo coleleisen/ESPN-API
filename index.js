@@ -49,6 +49,7 @@ app.use((error, req, res, next) => {
             message: error.message
         }
     })
+    return;
 })
 
 
