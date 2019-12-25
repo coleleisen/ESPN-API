@@ -7,7 +7,7 @@ const player = require('../models/player.js');
 const league = require('../models/league.js');
 
 
-const connectionString = `mongodb+srv://${conf.userDB}:${conf.passDB}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
+const connectionString = `mongodb+srv://${process.env.dbUser}:${process.env.dbPass}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 let League;
 let Player;
 let Team;
