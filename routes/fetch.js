@@ -9,6 +9,7 @@ const connectionString = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_
 
 router.post('/', (req, res, next)=>{
     console.log(process.env.DB_USER);
+    console.log(typeof process.env.DB_USER);
     console.log(process.env.DB_PASS);
     if(!req.body.league){
         res.status(200).json({
