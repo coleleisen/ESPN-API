@@ -4,13 +4,11 @@ const mongoose = require('mongoose');
 const league = require('../models/league.js');
 require('dotenv').config();
 
-console.log(process.env.DB_USER);
+
 const connectionString = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 
 router.post('/', (req, res, next)=>{
-    console.log(process.env.DB_USER);
-    console.log(typeof process.env.DB_USER);
-    console.log(process.env.DB_PASS);
+    
     if(!req.body.league){
         res.status(200).json({
             message: "must include league name", status : "fail"
@@ -22,7 +20,7 @@ router.post('/', (req, res, next)=>{
 
     const connector = mongoose.connect(connectionString, {
         useNewUrlParser : true,
-        //useUnifiedTopology : true
+        useUnifiedTopology : true
     })
     
     mongoose.connection.on('connected', ()=>{
