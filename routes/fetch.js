@@ -18,12 +18,11 @@ router.post('/', (req, res, next)=>{
     }
     let League;
 
-    var options = { server: { socketOptions: { keepAlive: 300000, connectTimeoutMS: 30000 } }, 
-                replset: { socketOptions: { keepAlive: 300000, connectTimeoutMS : 30000 } } }; 
+   
 
-    const connector = mongoose.connect(connectionString, options, {
+    const connector = mongoose.connect(connectionString, {
         useNewUrlParser : true,
-        useUnifiedTopology : true
+        //useUnifiedTopology : true
     })
     
     mongoose.connection.on('connected', ()=>{
