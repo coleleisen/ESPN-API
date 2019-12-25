@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const league = require('../models/league.js');
 
-console.log(process.env)
+
 const connectionString = `mongodb+srv://${process.env.dbUser}:${process.env.dbPass}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 
 router.post('/', (req, res, next)=>{
