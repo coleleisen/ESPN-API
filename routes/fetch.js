@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const conf = require('../conf.json');
 const mongoose = require('mongoose');
 const league = require('../models/league.js');
 

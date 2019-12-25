@@ -1,6 +1,5 @@
 const puppeteer = require('puppeteer');
 const mongoose = require('mongoose');
-const conf = require('../conf.json');
 const category = require('../models/category.js');
 const team = require('../models/team.js');
 const player = require('../models/player.js');
