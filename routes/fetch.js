@@ -31,6 +31,7 @@ router.post('/', (req, res, next)=>{
             res.status(200).json({ message: err, status : "fail"})
             return handleError(err);
         } 
+        else
         if(leagueObj==null){
             res.status(200).json({
                 message: "no league found with that name", status : "fail"
