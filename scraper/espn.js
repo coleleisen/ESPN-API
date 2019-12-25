@@ -4,7 +4,7 @@ const category = require('../models/category.js');
 const team = require('../models/team.js');
 const player = require('../models/player.js');
 const league = require('../models/league.js');
-
+require('dotenv').config();
 
 const connectionString = `mongodb+srv://${process.env.dbUser}:${process.env.dbPass}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 let League;
