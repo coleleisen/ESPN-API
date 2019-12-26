@@ -34,13 +34,6 @@ router.post('/', (req, res, next)=>{
             return;
             
         } 
-        else
-        if(leagueObj==null){
-            res.status(200).json({
-                message: "no league found with that name", status : "fail"
-                })
-                return;
-        }
         else{
             console.log(leagueObj);
              res.status(200).json(leagueObj);
