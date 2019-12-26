@@ -19,22 +19,17 @@ let Category;
 async function scrapeESPN(ESPNuser, ESPNpass, ESPNleague){
     const browser = await puppeteer.launch({
         args: ['--disable-features=site-per-process'],  
-        headless : false, //opens instance of chromeum
+        headless : true, //opens instance of chromeum
         defaultViewport : null //fixes view issue
     });
 
-    const connector = mongoose.connect(connectionString, {
-      useNewUrlParser : true,
-      useUnifiedTopology : true
-  })
   
-  mongoose.connection.on('connected', ()=>{
-     console.log("connected to db");
+  
      League = mongoose.model("League", league);
      Player = mongoose.model("Player", player);
      Team = mongoose.model("Team", team);
      Category = mongoose.model("Category", category);
-  })
+  
     //TO login through basketball page
     /*
     const url = 'https://www.espn.com/fantasy/basketball/'
