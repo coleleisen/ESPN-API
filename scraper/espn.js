@@ -334,7 +334,7 @@ const page = await browser.newPage();
     let teamer = [];
     for(var i =0 ; i < cats.length+2 ; i++){  //loop to format cat averages object
         let cat = cats[i]; 
-        if(oz.catAvg[i]){
+        if(oz.catAvg[i] && cat){
         if(cat==="FTM"){      
           let g = oz.catAvg[i];  
           g = g.toFixed(1);
