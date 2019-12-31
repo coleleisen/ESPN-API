@@ -5,7 +5,6 @@ const league = require('../models/league.js');
 require('dotenv').config();
 
 
-const connectionString = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 
 router.post('/', (req, res, next)=>{
     
@@ -17,9 +16,6 @@ router.post('/', (req, res, next)=>{
     }
     let League;
 
-   
-    
-    
        League = mongoose.model("League", league);
        League.findOne({ 'leagueName': req.body.league }, function (err, leagueObj) {
         if (err){
@@ -35,7 +31,6 @@ router.post('/', (req, res, next)=>{
         }
         else{
             console.log(leagueObj);
-            
              return res.status(200).json(leagueObj);
 
              

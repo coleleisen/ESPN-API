@@ -6,13 +6,10 @@ const player = require('../models/player.js');
 const league = require('../models/league.js');
 require('dotenv').config();
 
-const connectionString = `mongodb+srv://${process.env.dbUser}:${process.env.dbPass}@espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority`;
 let League;
 let Player;
 let Team;
 let Category;
-
-
 
 
 
@@ -152,11 +149,9 @@ const page = await browser.newPage();
          let diver = document.querySelector('div[class="jsx-1423235964 season--stats--table"] > section > table > tbody > tr > td > div > table > tbody');
          let arr = diver.querySelectorAll('tr');
           let btn = arr[j];
-          let count = btn.innerText;
-          let c = count.search("\t\n")
-          let c0 = count.search("\n  ")
-          let co = count.substring(c, c0);
-
+          let imger = btn.querySelector('img').src
+          let count = {name : btn.innerText,img : imger};
+          
           btn.querySelector('a').click();
          
          return count;
@@ -200,32 +195,38 @@ const page = await browser.newPage();
          let play = playerRows[y];
          let playerInfo = play.querySelectorAll('td');
          let playerPos = playerInfo[0].innerText;
-         let playerName = playerInfo[1].querySelector('div').title;
+         let playerName = playerInfo[1].querySelector('div');
       
           //check if player slot is empty
-         if(playerName!="Player"){    
-           let playerz = playerInfo[1].querySelector('div').innerHTML;
-           let playerImg= playerz.search("http");
-           let playerImgs = playerz.search(".png");
-           let playerImgStr = playerz.substring(playerImg, playerImgs);
-           playerImgStr += ".png";
+        
+         
 
          // let playerImgs = playerz.querySelectorAll('img');
          //let playerImg = playerImgs[0].src;
-       
            let playerInj = false;
            if(playerPos==='IR'){
                playerInj = true;
            }
+           if(playerName.title!="Player" && playerName.hasAttribute("title")){  
+
+            let playerz = playerInfo[1].querySelector('div').innerHTML;
+            let playerImg= playerz.search("http");
+            let playerImgs = playerz.search(".png");
+            let playerImgStr = playerz.substring(playerImg, playerImgs);
+            playerImgStr += ".png";
 
            let catNums = [];
+           console.log(playerName.title)
+           console.log(playerImgStr)
            let cato = catRows[y];
            let catInfo = cato.querySelectorAll('td');
            for(var i =0 ; i < catInfo.length; i +=1){     
              
              let numb = catInfo[i].querySelector('div').innerText; 
              let nam = catName[i]; 
-             
+             if(nam==="PR15"){
+               break;
+             }
              if(nam==="FGM" || nam==="FTM"){
                if(nam==="FGM"){
                  //seperate by slash
@@ -236,22 +237,25 @@ const page = await browser.newPage();
                 num2 = parseFloat(num2)
                 let cat = {name : "FGA", number : num1};             
                 catNums.push(cat); 
-                let cat2 = {name : nam, number : num2}; 
+                let cat2 = {name : "FGM", number : num2}; 
                 catNums.push(cat2);
-                if(num1!="NaN" && typeof num1 !== 'string' && num1 != null && playerInj != true){
+                let n = num1/num2;
+                n = n.toFixed(3);
+                n = parseFloat(n);
+                let cat3 = {name : "FG%", number : n}
+                catNums.push(cat3)
+                if(num1!="NaN" && typeof num1 !== 'string' && num1 != null && playerInj != true && numb !="--/--"){
                   leagueCatAvg[i] += num1;
                   teamCatAvg[i] += num1;
                   teamCatCount++;
                   
                 }
-                if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true){
+                if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true && numb !="--/--"){
                   leagueCatAvg[i+1] += num2;               
                   teamCatAvg[i+1] += num2;
                   teamCatCount++;
                 }
-                 if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true && num1!="NaN" && typeof num1 !== 'string' && num1 != null){
-                  i++;
-                 }                           
+                i++;                         
                }
                if(nam==="FTM"){
                    //seperate by slash
@@ -262,28 +266,31 @@ const page = await browser.newPage();
                    num2 = parseFloat(num2)                 
                 let cat = {name : "FTA", number : num1};             
                 catNums.push(cat); 
-                let cat2 = {name : nam, number : num2};
+                let cat2 = {name : "FTM", number : num2};
                 catNums.push(cat2); 
-                if(num1!="NaN" && typeof num1 !== 'string' && num1 != null && playerInj != true){
+                let n = num1/num2;
+                n = n.toFixed(3);
+                n = parseFloat(n);
+                let cat3 = {name : "FT%", number : n}
+                catNums.push(cat3)
+                if(num1!="NaN" && typeof num1 !== 'string' && num1 != null && playerInj != true && numb !="--/--"){
                   leagueCatAvg[i] += num1;
                   teamCatAvg[i] += num1;
                   teamCatCount++;
                  
                 }
-                if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true){
+                if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true && numb !="--/--"){
                   leagueCatAvg[i+1] += num2;               
                   teamCatAvg[i+1] += num2;
                   teamCatCount++;
                 }
-                 if(num2!="NaN" && typeof num2 !== 'string' && num2 != null && playerInj != true && num1!="NaN" && typeof num1 !== 'string' && num1 != null){
-                  i++;
-                 } 
+                i++;
+                 
                }       
             } 
-            else{
-              
+            else{       
               let num = parseFloat(numb);
-              if(num!="NaN" && typeof num !== 'string' && num != null && playerInj != true){
+              if(num!="NaN" && typeof num !== 'string' && num != null && playerInj != true && numb != '--'){
                 numb = num;     
                 leagueCatAvg[i] += num;  
                 teamCatAvg[i] += num;             
@@ -294,8 +301,8 @@ const page = await browser.newPage();
               catNums.push(cat); 
              }  
             } //end of cat loop
-            
-           var player = {name : playerName, image : playerImgStr, position : playerPos, injured : playerInj,  categories : catNums};  
+              
+           var player = {name : playerName.title, image : playerImgStr, position : playerPos, injured : playerInj,  categories : catNums};  
            players.push(player);
            
           }      
@@ -306,7 +313,8 @@ const page = await browser.newPage();
        
 
       let obj = {
-        teamName : standings,
+        teamName : standings.name,
+        logo : standings.img,
         catAvg : teamCatAvg,
         players : players,
         league : leagueCatAvg,
@@ -322,26 +330,49 @@ const page = await browser.newPage();
     delete oz.league;
     delete oz.cats; 
     leg = leag;
-
+   
     let teamer = [];
     for(var i =0 ; i < cats.length+2 ; i++){  //loop to format cat averages object
         let cat = cats[i]; 
+        if(oz.catAvg[i]){
         if(cat==="FTM"){      
-          teamer.push({name : "FTA", number : oz.catAvg[i]})
-          teamer.push({name : cat, number : oz.catAvg[i+1]}) 
-          teamer.push({name : "FT%", number : oz.catAvg[i] / oz.catAvg[i+1]})
+          let g = oz.catAvg[i];  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          let g2 = oz.catAvg[i+1];
+          g2 = g2.toFixed(1);
+          g2 = parseFloat(g2);
+          teamer.push({name : "FTA", number : g})
+          teamer.push({name : cat, number : g2}) 
+          let g3 = g / g2;
+          g3 = g3.toFixed(3)
+          g3 = parseFloat(g3)
+          teamer.push({name : "FT%", number : g3})
           i ++;
         }
         else
         if(cat==="FGM"){      
-          teamer.push({name : "FGA", number : oz.catAvg[i]})
-          teamer.push({name : cat, number : oz.catAvg[i+1]}) 
-          teamer.push({name : "FG%", number : oz.catAvg[i] / oz.catAvg[i+1]})
+          let g = oz.catAvg[i];  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          let g2 = oz.catAvg[i+1];
+          g2 = g2.toFixed(1);
+          g2 = parseFloat(g2);
+          teamer.push({name : "FGA", number : g})
+          teamer.push({name : cat, number : g2}) 
+          let g3 = g / g2;
+          g3 = g3.toFixed(3)
+          g3 = parseFloat(g3)
+          teamer.push({name : "FG%", number : g3})
           i ++;
         }
         else{
-          teamer.push({name : cat, number : oz.catAvg[i]})
-        }       
+          let g = oz.catAvg[i];  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          teamer.push({name : cat, number : g})
+        }   
+      }    
     }
     oz.catAvg = teamer;
     l.teams.push(oz);
@@ -363,24 +394,47 @@ const page = await browser.newPage();
     }//end of standings for loop
     let leaguer = [];
     for(var i =0 ; i < leag.length +2 ; i++){  //loop to format cat averages object
-        let cat = cats[i]; 
-        if(cat==="FTM"){      
-          leaguer.push({name : "FTA", number : leag[i] / counter})
-          leaguer.push({name : cat, number : leag[i+1] / counter}) 
-          leaguer.push({name : "FT%", number : leag[i] / leag[i+1]})
+        let cat = cats[i];
+        if(leag[i]){
+ 
+        if(cat==="FTM"){    
+          let g = leag[i] / counter;  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          let g2 = leag[i+1] /counter;
+          g2 = g2.toFixed(1);
+          g2 = parseFloat(g2);
+          leaguer.push({name : "FTA", number : g})
+          leaguer.push({name : cat, number : g2}) 
+          let g3 = g / g2;
+          g3 = g3.toFixed(3)
+          g3 = parseFloat(g3)
+          leaguer.push({name : "FT%", number : g3})
           i ++;
         }
         else
         if(cat==="FGM"){      
-          leaguer.push({name : "FGA", number : leag[i] / counter})
-          leaguer.push({name : cat, number : leag[i+1] / counter}) 
-          leaguer.push({name : "FG%", number : leag[i] / leag[i+1]})
+          let g = leag[i] / counter;  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          let g2 = leag[i+1] /counter;
+          g2 = g2.toFixed(1);
+          g2 = parseFloat(g2);
+          leaguer.push({name : "FGA", number : g})
+          leaguer.push({name : cat, number : g2}) 
+          let g3 = g / g2;
+          g3 = g3.toFixed(3)
+          g3 = parseFloat(g3)
+          leaguer.push({name : "FG%", number : g3})
           i ++;
         }
         else{
-          leaguer.push({name : cat, number : leag[i] / counter})
+          let g = leag[i] / counter;  
+          g = g.toFixed(1);
+          g = parseFloat(g);
+          leaguer.push({name : cat, number : g})
         }
-        
+      }
        
     }
     console.log(leaguer);
