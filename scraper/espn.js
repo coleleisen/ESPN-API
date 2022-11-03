@@ -16,7 +16,7 @@ let Category;
 async function scrapeESPN(ESPNuser, ESPNpass, ESPNleague){
     const browser = await puppeteer.launch({
         args: ['--disable-features=site-per-process'],  
-        headless : true, //opens instance of chromeum
+        headless : false, //opens instance of chromeum
         defaultViewport : null //fixes view issue
     });
 
@@ -96,13 +96,15 @@ const page = await browser.newPage();
            //check if login was failed.
         
         await page.waitForNavigation({waitUntil : 'networkidle2'});
-      
         await page.waitForSelector('#fantasy-feed-items');
        let list = await page.evaluate((ESPNleague) => {
+       
            let div = document.querySelector('#fantasy-feed-items');
-           var divs = div.querySelectorAll('div[class="favItem favItem--fantasy"]');
+           var divs = div.querySelectorAll('div[class="favItem favItem--fantasy loaded"]');
+         
            for (var i = 0; i < divs.length; i += 1) {   
-               let diver = divs[i].querySelector('a[class="favItem__team"]');
+             console.log(i)
+               let diver = divs[i].querySelector('a[class="favItem__team"]'); 
                let text = diver.querySelector('div[class="favItem__subHead"]').innerText;
                if(text===ESPNleague){
                    diver.click();
@@ -118,22 +120,22 @@ const page = await browser.newPage();
      // await page.waitForNavigation({waitUntil : 'networkidle2'});
       console.log(list)
       let d = new Date();
-      let leagueObj = {leagueName : list, lastUpdated : d, teams : []}
+      console.log(d)
+      let leagueObj = {leagueName : list, lastUpdated : d.toString(), teams : []}
       var l = new League(leagueObj);
      
       await page.waitForSelector('li[class="standings NavSecondary__Item"]');
        await page.evaluate(() => {
             let div = document.querySelector('li[class="standings NavSecondary__Item"]');
-            let btn = div.querySelector('a[class="NavSecondary__Link"]');
+            let btn = div.querySelector('a[class="AnchorLink NavSecondary__Link"]');
             btn.click();
       })
       await page.waitForNavigation({waitUntil : 'networkidle2'});
-      await page.waitForSelector('tbody[class="Table2__tbody"]');
-      
+      await page.waitForSelector('tbody[class="Table__TBODY"]');
       
       
      let counter = await page.evaluate(() => {
-      let diver = document.querySelector('div[class="jsx-1423235964 season--stats--table"] > section > table > tbody > tr > td > div > table > tbody');
+      let diver = document.querySelector('div[class="jsx-2972152035 season--stats--table"] >  div > div[class="flex"] > table > tbody');
        let arr = Array.from(diver.querySelectorAll('tr'));  
        let count = arr.length;
        return count;
@@ -144,16 +146,15 @@ const page = await browser.newPage();
     let cats;
     let leg = new Array(20).fill(0); 
     for (var j = 0 ; j < counter ; j += 1){
-        
         let standings = await page.evaluate((j) => {
-         let diver = document.querySelector('div[class="jsx-1423235964 season--stats--table"] > section > table > tbody > tr > td > div > table > tbody');
+         let diver = document.querySelector('div[class="jsx-2972152035 season--stats--table"] > div > div[class="flex"] > table > tbody');
          let arr = diver.querySelectorAll('tr');
           let btn = arr[j];
           let imger = btn.querySelector('img').src
           let count = {name : btn.innerText,img : imger};
           
           btn.querySelector('a').click();
-         
+         console.log(count)
          return count;
     },j)
 
@@ -161,21 +162,22 @@ const page = await browser.newPage();
    
     
     await page.waitForNavigation({waitUntil : 'networkidle2'});
-    await page.waitForSelector('table[class="Table2__table__wrapper"] > tbody');
+    await page.waitForSelector('table[class="Table Table--align-right Table--fixed Table--fixed-left"] > tbody');
     console.log(j);
 
     //click show 2020 stats!!
     await page.waitForSelector('#filterStat');
-    await page.select('#filterStat', 'currSeason');
-
+    //await page.select('#filterStat', 'lastSeason');
+    await page.select('#filterStat', 'projections');
+    //await page.select('#filterStat', 'currSeason');
+  
    let leagueCatAvg = leg;
    let oz= await page.evaluate((j, standings, leagueCatAvg) => {
       let playerTable = document.querySelector('div > table > tbody');
       let playerRows = playerTable.querySelectorAll('tr'); //all players on roster
-      
-      let catTable = document.querySelector('div[class="Table2__shadow-container"] > div > div > table');
-      let catNumbers = catTable.querySelector('tbody > tr > td > div > table > tbody');
-      let catRows = catNumbers.querySelectorAll('tr');   //all cat rows for each player
+      console.log("ostrich")
+      let catTable = document.querySelector('div[class="Table__ScrollerWrapper relative overflow-hidden"] > div[class="Table__Scroller"] > table > tbody');
+      let catRows = catTable.querySelectorAll('tr');   //all cat rows for each player
       let n = catRows.length;
       let nu = playerRows.length;
       let players = [];     
@@ -184,7 +186,7 @@ const page = await browser.newPage();
       let teamCatCount=0;
       for(var y = 0 ; y < nu; y += 1){
         if(y==0){ //if its first time around loop, collect cateogry names
-          let cat = catTable.querySelector('thead[class="Table2__sub-header Table2__thead"] > tr');  //get category row names
+          let cat = document.querySelector('div[class="Table__ScrollerWrapper relative overflow-hidden"] > div[class="Table__Scroller"] > table > thead > tr[class="Table__sub-header Table__TR Table__even"]');  //get category row names
             let catNames = cat.querySelectorAll('th');   
             for(var x = 0; x < catNames.length ; x+= 1){
                    let namer = catNames[x].querySelector('span').innerText;
@@ -383,13 +385,12 @@ const page = await browser.newPage();
     await page.waitForSelector('li[class="standings NavSecondary__Item"]');
     await page.evaluate(() => {
          let div = document.querySelector('li[class="standings NavSecondary__Item"]');
-         let btn = div.querySelector('a[class="NavSecondary__Link"]');
+         let btn = div.querySelector('a[class="AnchorLink NavSecondary__Link"]');
          btn.click();
    })
    await page.waitForNavigation({waitUntil : 'networkidle2'});
-   await page.waitForSelector('tbody[class="Table2__tbody"]');
+   await page.waitForSelector('tbody[class="Table__TBODY"]');
     
-   
    
     }//end of standings for loop
     let leaguer = [];
