@@ -28,7 +28,7 @@ async function scrapeESPN(ESPNuser, ESPNpass, ESPNleague){
      Category = mongoose.model("Category", category);
   
     //TO login through basketball page
-    /*
+    
     const url = 'https://www.espn.com/fantasy/basketball/'
 
     
@@ -39,19 +39,17 @@ async function scrapeESPN(ESPNuser, ESPNpass, ESPNleague){
         await page.waitForSelector('a[id="global-user-trigger"]');
          await page.hover('a[id="global-user-trigger"]');
          await page.waitForSelector('ul[class="account-management"]');
-
            
-       let data = await page.evaluate(()=>{   
-            let login = document.querySelector('ul[class="account-management"] > li:nth-child(5) > a')
-            let efaf = document.querySelector('a[class="button-alt med open-favs"]').innerText
-            document.querySelector('ul[class="account-management"] > li:nth-child(5) > a').click();
-
-            return { efaf, login}
+       let data = await page.evaluate(()=>{ 
+            
+            document.querySelector('ul[class="account-management"] > li:nth-child(8) > a').click();
+            return { }
           })
           console.log(data)
        
-*/
+
 //login the easier way
+/*
 const url = 'https://www.espn.com/login'
 
 
@@ -60,7 +58,7 @@ const page = await browser.newPage();
 //page.on('console', consoleObj => console.log(consoleObj.text())); //this line allows browser console to be shown in node console
 
  await page.goto(url, {waitUntil: 'networkidle2'})
-
+*/
  function waitForFrame(page) {
   let fulfill;
   const promise = new Promise(x => fulfill = x);
@@ -76,8 +74,9 @@ const page = await browser.newPage();
       
   }
 }
-          
+          /*
          page.setDefaultTimeout(60000)
+         
          await page.waitForSelector("iframe");
          const elementHandle = await page.$('div#disneyid-wrapper iframe');      
          const frame = await waitForFrame(page);
@@ -94,15 +93,30 @@ const page = await browser.newPage();
 	       	await loginButton.click();
         
            //check if login was failed.
-        
         await page.waitForNavigation({waitUntil : 'networkidle2'});
+        */
+        console.log('hereye')
+        page.setDefaultTimeout(60000)
+        console.log('heretest')
+        await page.waitForSelector('input');
+        console.log(ESPNuser)
+          const username = await page.$('input');
+          await username.type(ESPNuser, {delay : 30});
+          console.log('hereya')
+          await page.waitForSelector('input');
+          console.log(ESPNuser)
+          const pass = await page.$('input');
+          await pass.type(ESPNpass, {delay : 30});
+        /*
+        //UNCOMMENT WHEN FANTASY BUTTONS ARE BACK AFTER WORLD CUP
         await page.waitForSelector('#fantasy-feed-items');
        let list = await page.evaluate((ESPNleague) => {
        
            let div = document.querySelector('#fantasy-feed-items');
            var divs = div.querySelectorAll('div[class="favItem favItem--fantasy loaded"]');
-         
+
            for (var i = 0; i < divs.length; i += 1) {   
+            console.log("herooo")
              console.log(i)
                let diver = divs[i].querySelector('a[class="favItem__team"]'); 
                let text = diver.querySelector('div[class="favItem__subHead"]').innerText;
@@ -116,12 +130,16 @@ const page = await browser.newPage();
            return "No league found with that name"
        
       }, ESPNleague)
+      */
+      
 
+      await page.goto("https://fantasy.espn.com/basketball/team?leagueId=63980886", {waitUntil: 'networkidle2'})
      // await page.waitForNavigation({waitUntil : 'networkidle2'});
-      console.log(list)
+      //console.log(list)
       let d = new Date();
       console.log(d)
-      let leagueObj = {leagueName : list, lastUpdated : d.toString(), teams : []}
+      //let leagueObj = {leagueName : list, lastUpdated : d.toString(), teams : []}
+      let leagueObj = {leagueName : "DGFBL", lastUpdated : d.toString(), teams : []}
       var l = new League(leagueObj);
      
       await page.waitForSelector('li[class="standings NavSecondary__Item"]');
@@ -170,12 +188,11 @@ const page = await browser.newPage();
     //await page.select('#filterStat', 'lastSeason');
     await page.select('#filterStat', 'projections');
     //await page.select('#filterStat', 'currSeason');
-  
+    //await page.select('#filterStat', 'last30')
    let leagueCatAvg = leg;
    let oz= await page.evaluate((j, standings, leagueCatAvg) => {
       let playerTable = document.querySelector('div > table > tbody');
       let playerRows = playerTable.querySelectorAll('tr'); //all players on roster
-      console.log("ostrich")
       let catTable = document.querySelector('div[class="Table__ScrollerWrapper relative overflow-hidden"] > div[class="Table__Scroller"] > table > tbody');
       let catRows = catTable.querySelectorAll('tr');   //all cat rows for each player
       let n = catRows.length;
