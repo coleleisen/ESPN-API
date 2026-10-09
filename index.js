@@ -1,9 +1,8 @@
 const bodyParser = require('body-parser');
 const ESPNroute = require('./routes/scrape');
 const fetchRoute = require('./routes/fetch');
-const morgan = require('morgan'); 
+const morgan = require('morgan');
 const http = require('http');
-const https = require('https');
 const express = require("express");
 const app = express();
 const mongoose = require('mongoose');
@@ -17,22 +16,25 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 
-const connectionString = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@espn-cluster-ggfli.mongodb.net/ESPN\?retryWrites=true&w=majority`;
+const connectionString = 'mongodb+srv://espn-cluster-ggfli.mongodb.net/ESPN?retryWrites=true&w=majority';
 
 mongoose.connect(connectionString, {
+  user: process.env.DB_USER,
+  pass: process.env.DB_PASS,
   useNewUrlParser : true,
-  useUnifiedTopology : true
-})
+  useUnifiedTopology : true,
+  serverSelectionTimeoutMS: 10000
+}).catch(() => console.error('Database connection failed. Check the database configuration.'));
 mongoose.connection.on('connected', function() {
   console.log("connected to db")
 })
-// Handle CORS enabled 
+// Handle CORS enabled
 app.use('/scrape', ESPNroute)
 app.use('/fetch', fetchRoute)
 
 /*
 app.use((req, res, next) => {
-  
+
  res.header('Access-Control-Allow-Origin', '*')
   //Could be list of allowed headers, here '*' means all headers
   res.header('Access-Control-Allow-Headers', '*')
@@ -48,7 +50,7 @@ app.use((req, res, next) => {
 */
 
 
-// Error request, 
+// Error request,
 app.use((req, res, next) => {
     const error = new Error('Route Not Found')
     error.status = 404;
@@ -69,12 +71,8 @@ app.use((error, req, res, next) => {
 
 var HTTP_PORT = process.env.PORT || 3001;
 //increase socket timeout time to deal with long response time of scrape
-const httpServer = http.createServer(app, function (req, res) {
-  res.socket.setTimeout(20 * 60 * 1000); // 20 minute timeout
-  res.socket.once('timeout', function() {
-  res.process.nextTick(res.socket.destroy);
-});
-  })   //make https if we get certificate
+const httpServer = http.createServer(app);
+httpServer.setTimeout(20 * 60 * 1000);
 httpServer.listen(HTTP_PORT, () => {
   console.log("HTTP API Started on port: " + HTTP_PORT)
 });

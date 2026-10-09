@@ -1,16 +1,16 @@
 const mongoose = require('mongoose')
 const category = require('../models/category.js');
-const team = require('../models/team.js');
-const player = require('../models/player.js');
-const league = require('../models/league.js');
 const Schema = mongoose.Schema;
 const Player = new Schema({
-  playerName: {
+  name: {
     type: String,
+    alias: 'playerName',
     required: [true, 'Player name is required']
   },
+ playerId: String,
  image : String,
  position : String,
+ lineupSlot: String,
  injured : Boolean,
  categories : [category]
 })

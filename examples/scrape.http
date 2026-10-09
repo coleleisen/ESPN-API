@@ -1,0 +1,35 @@
+@api = http://localhost:3001
+
+### Initial login. Use your own credentials; do not save them in this file.
+POST {{api}}/scrape
+Content-Type: application/json
+
+{
+  "username": "{{espnUsername}}",
+  "password": "{{espnPassword}}",
+  "league": "IFHL",
+  "sport": "hockey"
+}
+
+### If ESPN requests verification, reuse the challengeId from the 409 response.
+POST {{api}}/scrape/verify
+Content-Type: application/json
+
+{
+  "challengeId": "{{challengeId}}",
+  "code": "{{verificationCode}}"
+}
+
+### Automated runs reuse the sessionToken returned after the verified login.
+# Keep this token in your scheduler's secret configuration, not in source control.
+# No email/password/code is needed while ESPN accepts the saved browser session.
+# A 401 ESPN_REAUTH_REQUIRED means a fresh verified login is necessary.
+# Run only one scrape at a time per session. Use the same server/persistent session directory.
+POST {{api}}/scrape
+Content-Type: application/json
+
+{
+  "sessionToken": "{{sessionToken}}",
+  "league": "IFHL",
+  "sport": "hockey"
+}

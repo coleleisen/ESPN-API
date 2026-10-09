@@ -2,12 +2,12 @@
   "name": "fantasy-ball-api",
   "version": "1.0.0",
   "engines": {
-    "node": "16.20.1"
+    "node": ">=22.12.0"
   },
   "description": "fantasy basketball scraper and api",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "start": "node index.js"
   },
   "author": "Cole Leisen",
@@ -20,6 +20,6 @@
     "mongoose": "^5.8.1",
     "morgan": "^1.9.1",
     "nodemon": "^2.0.1",
-    "puppeteer": "^2.0.0"
+    "puppeteer": "^25.12.0"
   }
 }
