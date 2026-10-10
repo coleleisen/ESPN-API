@@ -2,7 +2,7 @@
   "name": "fantasy-ball-api",
   "version": "1.0.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "24.12.0"
   },
   "description": "fantasy basketball scraper and api",
   "main": "index.js",

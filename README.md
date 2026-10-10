@@ -1,6 +1,12 @@
 # ESPN fantasy scraper API
 
-Run with Node 22.12 or later. Copy `.env.example` to `.env`, configure the database credentials, run `npm install`, then `npm start`. The default port is 3001. Puppeteer uses an installed Chrome/Edge on Windows or its downloaded Chrome elsewhere; `PUPPETEER_EXECUTABLE_PATH` overrides the executable.
+Run with Node 24.12.0, the version pinned in `package.json`. Copy `.env.example` to `.env`, configure the database credentials, run `npm ci`, then `npm start`. The default port is 3001. Puppeteer uses an installed Chrome/Edge on Windows or its downloaded Chrome elsewhere; `PUPPETEER_EXECUTABLE_PATH` overrides the executable.
+
+## Production runtime
+
+Render reads `engines.node` from `package.json`. Keep this pinned while the API uses Mongoose 5 and MongoDB driver 3: their connection parser uses legacy URL behavior that throws on Node 25 and later ([Node DEP0170](https://nodejs.org/api/deprecations.html#dep0170-invalid-port-when-using-urlparse)). An unbounded range such as `>=22.12.0` can select an incompatible Node release and leave `/fetch` returning HTTP 500 even though the HTTP server starts.
+
+Use `npm ci` as the Render build command to install the versions in `package-lock.json`, and `npm start` as the start command. Set `DB_USER` and `DB_PASS` in the service's environment. A `NODE_VERSION` environment variable overrides the package setting; if present, keep it at `24.12.0` too. After deployment, confirm `connected to db` appears in the logs and `POST /fetch` with `{ "league": "DGFBL" }` returns HTTP 200.
 
 ## Login and recurring scrapes
 
