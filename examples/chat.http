@@ -1,0 +1,21 @@
+@api = http://localhost:3002
+
+GET {{api}}/chat/status?league=DGFBL
+
+### Refresh the complete league player pool (requires the configured ESPN session)
+POST {{api}}/chat/refresh
+Content-Type: application/json
+
+{ "league": "DGFBL" }
+
+### Ask using every team's roster plus ESPN's full player lookup and web research
+POST {{api}}/chat
+Content-Type: application/json
+
+{
+  "league": "DGFBL",
+  "teamId": "1",
+  "message": "Which available players could improve my assists? Suggest pickups and drops, and check recent injury news.",
+  "research": true,
+  "history": []
+}

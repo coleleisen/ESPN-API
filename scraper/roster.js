@@ -64,7 +64,7 @@ function normalizePlayers(sections, sport) {
     const stats = new Map();
     for (const { name, value } of values) {
       if (['%ROST', 'PR15', 'PR7', 'PR30', 'GP', 'GS', 'MIN'].includes(name)) continue;
-      if (/^(FGM|FTM)(\/A)?$/.test(name) && value?.includes('/')) {
+      if (/^(FGM|FTM)(\/(?:A|FGA|FTA))?$/.test(name) && value?.includes('/')) {
         const prefix = name.slice(0, 2);
         const [made, attempted] = value.split('/').map(numeric);
         stats.set(prefix + 'M', made);
@@ -124,11 +124,12 @@ async function readRosterTables(page, target) {
   const standings = await page.evaluate(() => {
     // Standings names are JavaScript links without hrefs. The team menu exposes
     // real URLs, including My Team for the one omitted from Opposing Teams.
+    const normalizedText = text => text.replace(/\s+/g, ' ').trim();
     const links = Array.from(document.querySelectorAll('.NavSecondary a[href*="teamId="]'));
     const teams = Array.from(document.querySelectorAll('.season--stats--table .Table--fixed-left tbody tr')).map(row => {
       const teamName = row.querySelector('.teamName')?.textContent.trim();
       if (!teamName) throw new Error('Standings team name is missing');
-      const link = links.find(link => link.textContent.trim().startsWith(teamName + ' ('));
+      const link = links.find(link => normalizedText(link.textContent).startsWith(normalizedText(teamName) + ' ('));
       const logo = row.querySelector('img')?.src || '';
       return { teamName, teamId: link && new URL(link.href).searchParams.get('teamId'), logo: logo.startsWith('data:') ? '' : logo };
     });
@@ -150,8 +151,16 @@ async function readRosterTables(page, target) {
     seasonId = Number(options.find(option => option.value === 'currSeason')?.text.match(/\d{4}/)?.[0]);
     // Loading the period in the URL avoids a race with ESPN's initial React
     // render, which can otherwise overwrite an early dropdown selection.
-    await page.waitForFunction(label => Array.from(document.querySelectorAll('.players-table .Table__Scroller thead th'))
-      .some(header => header.innerText.toUpperCase().includes(label.toUpperCase())), {}, selected.text);
+    await page.waitForFunction(({ label, period, sport }) => {
+      if (document.querySelector('#filterStat')?.value !== period) return false;
+      const tables = Array.from(document.querySelectorAll('.players-table .Table__Scroller table'));
+      return tables.length > 0 && tables.every(table => table.querySelector('tbody tr')
+        && Array.from(table.querySelectorAll('thead th')).some(header => {
+          const text = header.innerText.trim().toUpperCase();
+          // Basketball uses a generic STATS heading even for projections.
+          return text.includes(label.toUpperCase()) || (sport === 'basketball' && text === 'STATS');
+        }));
+    }, {}, { label: selected.text, period: target.statsPeriod, sport: target.sport });
     // Standings logos below the viewport are lazy-loaded placeholders. The
     // individual team page renders that team's real logo in its visible header.
     const logo = await page.$eval('.team-logo img', image => image.src).catch(() => '');

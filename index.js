@@ -31,6 +31,7 @@ mongoose.connection.on('connected', function() {
 // Handle CORS enabled
 app.use('/scrape', ESPNroute)
 app.use('/fetch', fetchRoute)
+app.use('/chat', require('./routes/chat'));
 
 /*
 app.use((req, res, next) => {

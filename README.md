@@ -29,3 +29,35 @@ The scraper reads the current rosters and the selected statistics period (`currS
 ## Validation
 
 Run `npm test`. Tests cover browser-based login/verification, cookie and local-storage persistence across browser restarts, session expiry/concurrency, API error handling, and schema/atomic-update behavior. They use fixtures and do not prove that a live ESPN league scrape succeeded.
+
+## Scraper Agent
+
+The companion `ESPN-Fantasy` frontend includes a **Scraper Agent** section at `#/scraper-agent`. It supports prompts and follow-up questions, a selected team, optional web research with clickable citations, and a refresh button for ESPN data. It gives recommendations; it does not submit trades, claims, drops, or lineup changes.
+
+Configure these values in this API project's ignored `.env`, or in the API host's environment, then restart the API:
+
+```dotenv
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-6-astra
+ESPN_ADVISOR_SESSION_FILE=C:/Projects/ESPN-API/.espn-sessions/ifhl-run.json
+```
+
+Visitors can open the advisor and chat automatically using the app's server-side OpenAI key. No user API key, access code, or authorization header is needed. The OpenAI key stays on the API server; do not put it in `REACT_APP_*`, browser storage, or Git. The frontend keeps the conversation in memory for the current visit. Chat and refresh requests share limits of 20 requests per minute and two concurrent operations per API process. These limits are per process, not shared across multiple API instances.
+
+`ESPN_ADVISOR_SESSION_FILE` points to the private JSON file containing a verified `sessionToken`, using the existing persistent browser profile on the same server. It is optional for chatting with saved data, and required for **Refresh league data**. The initial full-pool refresh supports basketball. Hockey can use saved roster analysis, with missing waiver data explicitly identified. Renew an expired ESPN login using the existing `/scrape` verification flow.
+
+The advisor refresh saves a separate `AdvisorSnapshot` document, leaving the dashboard's selected stats view intact. For basketball it reads every team and the complete paginated player pool, including roster ownership, lineup slots, injury designations, eligibility, waiver/free-agent status, scoring rules, acquisition/trade rules, current actual stats, projections, previous-season stats, and ESPN's rolling 7/15/30-day splits. Totals and per-game averages remain separate. Unavailable statistics stay empty; preseason absence is not zero performance. Unknown ESPN statistic identifiers retain explicit labels instead of guessed meanings. Refresh failures preserve the previous complete dataset.
+
+Every chat request reloads the database and sends the complete roster map, roster-player current averages/projections, league rules and timestamps to OpenAI. A scoped, read-only tool can retrieve any player and its other statistical periods from the full pool, ranked by a selected statistic and paginated. This avoids uploading a static file that becomes outdated. The advisor flags data older than six hours and any newer dashboard scrape; refreshing is manual, not scheduled. ESPN data is a snapshot, not a guarantee that a player is still available when a claim is submitted.
+
+The integration uses the [OpenAI Responses API's web search](https://developers.openai.com/api/docs/guides/tools-web-search) and [function calling](https://developers.openai.com/api/docs/guides/function-calling). Web research defaults on, but the model decides whether a search is needed. Answers report whether it actually searched and carry citation URLs/offsets. Requests set `store: false`; chat history is sent explicitly on each turn. OpenAI receives league data and questions to generate answers. The model and search consume your OpenAI API account's usage; model access and billing must be enabled. No automatic retries are made after upstream failures.
+
+Endpoints (examples in `examples/chat.http`):
+
+- `GET /chat/status?league=DGFBL`: readiness, team choices and dataset freshness; no secrets.
+- `POST /chat`: `{ league, teamId?, message, research?, history? }`. Uses the server's configured OpenAI key and returns `answer`, `citations`, `webSearchUsed`, `usage`, and dataset metadata.
+- `POST /chat/refresh`: `{ league }`. Refreshes the complete basketball dataset using the configured ESPN session.
+
+Questions are limited to 4,000 characters; history accepts up to 20 user/assistant messages, 12,000 characters each and 60,000 total. Responses are bounded to six model rounds and a three-minute timeout. Provider failures, missing configuration, invalid teams and incomplete results return explicit errors rather than fabricated answers. Configure a Responses model that supports web search in `OPENAI_MODEL` to change the default.
+
+Validation uses mocked OpenAI responses for tool routing, history, citations, automatic use of the server key, rate limits and failures, plus the existing scraper tests. A real OpenAI answer requires a configured key. The frontend test suite and production build are in the neighboring `ESPN-Fantasy` project.

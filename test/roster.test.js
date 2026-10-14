@@ -1,7 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { launchBrowser } = require('../scraper/browser');
-const { readRenderedRoster, normalizePlayers, completeSnapshot } = require('../scraper/roster');
+const { readRosterTables, readRenderedRoster, normalizePlayers, completeSnapshot } = require('../scraper/roster');
 
 let browser;
 before(async () => { browser = await launchBrowser(); });
@@ -47,7 +47,7 @@ test('hockey reads both sections, keeps zeros, excludes research, and aligns ska
 test('basketball shooting uses made/attempted weights and preserves zero categories', () => {
   const players = normalizePlayers([{ players: [
     { name: 'A', values: [{ name: 'FGM', value: '1/2' }, { name: 'TO', value: '0' }] },
-    { name: 'B', values: [{ name: 'FGM', value: '1/8' }, { name: 'TO', value: '0' }] }
+    { name: 'B', values: [{ name: 'FGM/FGA', value: '1/8' }, { name: 'TO', value: '0' }] }
   ] }]);
   const league = completeSnapshot([{ teamName: 'A', players }], { ...target, sport: 'basketball' }, 2027);
   assert.deepEqual(Object.fromEntries(league.catAvg.map(stat => [stat.name, stat.number])), { FGM: 2, FGA: 10, 'FG%': 0.2, TO: 0 });
@@ -56,4 +56,41 @@ test('basketball shooting uses made/attempted weights and preserves zero categor
 test('missing goalie tables and unreadable stats are rejected before saving', () => {
   assert.throws(() => normalizePlayers([{ type: 'SKATERS', players: [] }], 'hockey'), { code: 'INCOMPLETE_ROSTER' });
   assert.throws(() => normalizePlayers([{ players: [{ values: [{ name: 'G', value: 'unavailable' }] }] }]), { code: 'INVALID_STATISTICS' });
+});
+
+test('projection scrape matches team links with extra whitespace and nonconsecutive IDs', async () => {
+  const page = await browser.newPage();
+  const visited = [];
+  const standings = `<nav class="NavSecondary">
+    <a href="/basketball/team?leagueId=123&teamId=1">My Team</a>
+    <a href="/basketball/team?leagueId=123&teamId=8">Jerry West  (JW)Manager</a>
+    <a href="/basketball/team?leagueId=123&teamId=13">Luck&nbsp; Not Skill  (LNS)Manager</a>
+    </nav><div class="season--stats--table"><table class="Table--fixed-left"><tbody>
+    <tr><td class="teamName">Own Team</td></tr>
+    <tr><td class="teamName">Jerry West </td></tr>
+    <tr><td class="teamName">Luck Not Skill </td></tr>
+    </tbody></table></div>`;
+  try {
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      if (request.resourceType() !== 'document') {
+        request.respond({ status: 204 });
+        return;
+      }
+      const url = new URL(request.url());
+      const isStandings = url.pathname.endsWith('/standings');
+      if (!isStandings) visited.push({ teamId: url.searchParams.get('teamId'), period: url.searchParams.get('statSplit') });
+      const roster = `<select id="filterStat"><option value="currSeason">2027 Season</option>
+        <option value="projections" selected>2027 Projections</option></select>`
+        + section('PLAYERS', 'PG', ['PTS'], [{ name: 'Player', stats: [20], points: 20 }])
+          .replace('2027 SEASON', 'STATS');
+      request.respond({ status: 200, contentType: 'text/html', body: isStandings ? standings : roster });
+    });
+    const league = await readRosterTables(page, { ...target, sport: 'basketball', statsPeriod: 'projections' });
+    assert.deepEqual(visited, ['1', '8', '13'].map(teamId => ({ teamId, period: 'projections' })));
+    assert.deepEqual(league.teams.map(team => team.teamId), ['1', '8', '13']);
+    assert.equal(league.seasonId, 2027);
+    assert.equal(league.statsPeriod, 'projections');
+    assert.equal(league.teams.length, 3);
+  } finally { await page.close(); }
 });
