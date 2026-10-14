@@ -6,6 +6,7 @@ const { buildContext, promptContext, lookupPlayers } = require('../advisor/conte
 const { answerQuestion, createResponse, extractAnswer, buildChatInput } = require('../advisor/chat');
 const { modelFor, LIMITS, trimHistory } = require('../advisor/config');
 const { createUsage, recordUsage, reportedUsage } = require('../advisor/usage');
+const { STRATEGY_INSTRUCTIONS, strategyRevision } = require('../advisor/instructions');
 const { createChatRouter } = require('../routes/chat');
 
 const timestamp = new Date('2026-10-14T12:00:00Z');
@@ -87,13 +88,16 @@ test('legacy snapshots remain useful but explicitly cannot establish waiver avai
 test('Responses tool loop uses fresh complete rosters, returns lookup results, preserves reasoning and citations', async () => {
   const { context } = fixture();
   const requests = [];
-  const result = await answerQuestion({ context, teamId: '1', message: 'Who should I add?', history: [{ role: 'user', content: 'I need points.' }], research: true }, {
+  const result = await answerQuestion({ context, teamId: '1', message: 'Who should I add?', history: [{ role: 'user', content: 'I am punting assists.' }], research: true }, {
     apiKey: 'test-secret', model: 'configured-model', createResponse: async (body, options) => {
       requests.push(JSON.parse(JSON.stringify(body)));
       assert.equal(options.apiKey, 'test-secret');
       assert.equal(body.store, false);
       assert.equal(body.model, 'configured-model');
       assert.ok(JSON.stringify(body.input).includes('Player 22'));
+      // Strategy must survive every tool round alongside the user's preferences.
+      assert.ok(body.instructions.includes(STRATEGY_INSTRUCTIONS));
+      assert.ok(body.input.some(i => i.role === 'user' && i.content === 'I am punting assists.'));
       assert.ok(!JSON.stringify(body).includes('test-secret'));
       if (requests.length === 1) return { status: 'completed', output: [
         { type: 'reasoning', id: 'r1', encrypted_content: 'opaque-reasoning' },
@@ -179,6 +183,7 @@ test('the configured server key enables chat automatically and is never returned
     assert.equal(status.configured, true);
     assert.ok(!JSON.stringify(status).includes('server-only-secret'));
     assert.equal(status.context.teamCount, 2);
+    assert.equal(status.strategyRevision, strategyRevision);
     const response = await post({ league: 'Fixture', message: 'Hi', apiKey: 'browser-key', model: 'browser-model' });
     assert.equal(response.status, 200);
     const result = await response.json();

@@ -56,6 +56,8 @@ The integration uses the [OpenAI Responses API's web search](https://developers.
 
 Answers include input, cached-input, output/reasoning tokens, model-call and web-search counts, and an estimated USD cost displayed in the frontend. The estimate uses published standard rates dated 2026-10-14, treats all uncached input at the higher cache-write rate, and includes web-search call fees. Reasoning is already part of output tokens and is not double-counted. Estimates are not billing statements; unknown models return no dollar estimate. Completed usage is also returned on failures, with missing/interrupted usage marked incomplete. Rates are maintained in `advisor/usage.js`.
 
+Customize the advisor's strategy in [`advisor/AGENTS.md`](advisor/AGENTS.md). The server loads this file at startup and includes it in every model call alongside its core data/tool instructions. Keep it under 6,000 bytes to limit input cost; commit and deploy (or restart locally) after editing. `/chat/status` exposes a `strategyRevision` hash to verify the loaded version. In H2H category leagues, the instructions prioritize likely punts, strengths to protect and winnable swing categories, rather than automatically fixing the weakest category. Inferred punts remain assumptions; explicit user preferences take priority while retained in recent chat history. Trade advice considers both teams' builds. Points and roto leagues use their own scoring objectives.
+
 Endpoints (examples in `examples/chat.http`):
 
 - `GET /chat/status?league=DGFBL`: readiness, team choices and dataset freshness; no secrets.

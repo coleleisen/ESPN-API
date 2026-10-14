@@ -6,6 +6,7 @@ const { answerQuestion } = require('../advisor/chat');
 const { collectAdvisorSnapshot } = require('../advisor/espn');
 const { AdvisorError } = require('../advisor/errors');
 const { modelFor, LIMITS } = require('../advisor/config');
+const { strategyRevision } = require('../advisor/instructions');
 
 function validate(body, chat = true) {
   if (!body || typeof body.league !== 'string' || !body.league.trim() || body.league.length > 100) {
@@ -66,7 +67,7 @@ function createChatRouter(deps = {}) {
       const { context } = await contextFor(league);
       const env = config();
       res.json({ configured: Boolean(env.OPENAI_API_KEY),
-        refreshConfigured: Boolean(env.ESPN_ADVISOR_SESSION_FILE), model: modelFor(env), limits: LIMITS,
+        refreshConfigured: Boolean(env.ESPN_ADVISOR_SESSION_FILE), model: modelFor(env), limits: LIMITS, strategyRevision,
         context: context.metadata, teams: context.teams.map(t => ({ id: t.id, name: t.name })) });
     } catch (error) { fail(res, error); }
   });
