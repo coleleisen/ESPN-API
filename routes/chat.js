@@ -5,6 +5,7 @@ const { buildContext } = require('../advisor/context');
 const { answerQuestion } = require('../advisor/chat');
 const { collectAdvisorSnapshot } = require('../advisor/espn');
 const { AdvisorError } = require('../advisor/errors');
+const { modelFor, LIMITS } = require('../advisor/config');
 
 function validate(body, chat = true) {
   if (!body || typeof body.league !== 'string' || !body.league.trim() || body.league.length > 100) {
@@ -25,7 +26,7 @@ function validate(body, chat = true) {
     throw new AdvisorError('INVALID_CHAT_OPTIONS', 'Invalid team or research setting.', 400);
   }
   return { league: body.league.trim(), message: body.message.trim(), teamId: body.teamId || '',
-    research: body.research !== false, history: history.map(({ role, content }) => ({ role, content })) };
+    research: body.research === true, history: history.map(({ role, content }) => ({ role, content })) };
 }
 
 function createChatRouter(deps = {}) {
@@ -41,7 +42,8 @@ function createChatRouter(deps = {}) {
 
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const fail = (res, error) => res.status(error.status || 500).json({ status: 'fail',
-    code: error.code || 'ADVISOR_FAILED', message: error.publicMessage || 'The advisor could not load your league. Please retry.' });
+    code: error.code || 'ADVISOR_FAILED', message: error.publicMessage || 'The advisor could not load your league. Please retry.',
+    ...(error.usage ? { usage: error.usage, model: error.model } : {}) });
   const limitRequests = (req, res, next) => {
     if (now() - windowStart >= 60000) { windowStart = now(); requests = 0; }
     if (requests >= 20 || active >= 2) {
@@ -64,7 +66,7 @@ function createChatRouter(deps = {}) {
       const { context } = await contextFor(league);
       const env = config();
       res.json({ configured: Boolean(env.OPENAI_API_KEY),
-        refreshConfigured: Boolean(env.ESPN_ADVISOR_SESSION_FILE), model: env.OPENAI_MODEL || 'gpt-6-astra',
+        refreshConfigured: Boolean(env.ESPN_ADVISOR_SESSION_FILE), model: modelFor(env), limits: LIMITS,
         context: context.metadata, teams: context.teams.map(t => ({ id: t.id, name: t.name })) });
     } catch (error) { fail(res, error); }
   });
@@ -99,7 +101,7 @@ function createChatRouter(deps = {}) {
       const { context } = await contextFor(request.league);
       if (request.teamId && !context.teams.some(t => t.id === request.teamId)) throw new AdvisorError('TEAM_NOT_FOUND', 'Select a team from this league.', 400);
       res.json({ status: 'success', ...(await answer({ ...request, context }, {
-        apiKey: env.OPENAI_API_KEY, model: env.OPENAI_MODEL, signal: controller.signal
+        apiKey: env.OPENAI_API_KEY, model: modelFor(env), signal: controller.signal
       })) });
     } catch (error) { if (!res.destroyed) fail(res, error); }
     finally { clearTimeout(timer); res.off('close', disconnected); active--; }

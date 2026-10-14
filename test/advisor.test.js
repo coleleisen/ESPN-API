@@ -2,8 +2,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { normalizeSnapshot } = require('../advisor/espn');
-const { buildContext, lookupPlayers } = require('../advisor/context');
-const { answerQuestion, createResponse, extractAnswer } = require('../advisor/chat');
+const { buildContext, promptContext, lookupPlayers } = require('../advisor/context');
+const { answerQuestion, createResponse, extractAnswer, buildChatInput } = require('../advisor/chat');
+const { modelFor, LIMITS, trimHistory } = require('../advisor/config');
+const { createUsage, recordUsage, reportedUsage } = require('../advisor/usage');
 const { createChatRouter } = require('../routes/chat');
 
 const timestamp = new Date('2026-10-14T12:00:00Z');
@@ -30,7 +32,7 @@ function fixture() {
   snapshot.updatedAt = timestamp;
   return { league, raw, pool, snapshot, context: buildContext(league, snapshot, timestamp) };
 }
-const lookup = overrides => ({ query: '', teamId: '', availability: 'available', period: 'projections', sortBy: 'PTS', ascending: false, offset: 0, limit: 30, ...overrides });
+const lookup = overrides => ({ query: '', teamId: '', availability: 'available', period: 'projections', sortBy: 'PTS', ascending: false, offset: 0, limit: 20, detail: 'scoring', ...overrides });
 
 test('normalization preserves every roster, distinguishes current/projection/previous stats, and strips account data', () => {
   const { raw, pool, league } = fixture();
@@ -164,7 +166,7 @@ test('chat works without user credentials and rejects injection, oversized input
 
 test('the configured server key enables chat automatically and is never returned to the browser', async () => {
   await withRouter({
-    config: () => ({ OPENAI_API_KEY: 'server-only-secret', OPENAI_MODEL: 'server-model' }),
+    config: () => ({ OPENAI_API_KEY: 'server-only-secret', OPENAI_ADVISOR_MODEL: 'server-model' }),
     answer: async (request, options) => {
       assert.equal(options.apiKey, 'server-only-secret');
       assert.equal(options.model, 'server-model');
@@ -183,6 +185,121 @@ test('the configured server key enables chat automatically and is never returned
     assert.equal(result.answer, 'Advice from the server.');
     assert.ok(!JSON.stringify(result).includes('server-only-secret'));
   });
+});
+
+test('compact context preserves complete ownership and fresh selected stats without embedding other rosters statistics', () => {
+  const { context, league, snapshot } = fixture();
+  const first = promptContext(context, '1');
+  assert.deepEqual(first.teams[1].roster, [['22', 'Player 22']]);
+  assert.equal(first.teams[1].players, undefined);
+  assert.equal(first.selectedRoster.projections[0][1], 20);
+  assert.equal(first.metadata.currentTime, undefined);
+  assert.equal(promptContext(context, '').selectedRoster, null);
+  const later = buildContext(league, snapshot, new Date(timestamp.getTime() + 1000));
+  assert.deepEqual(promptContext(later, '1'), first);
+  snapshot.data.players[0].statistics[0].perGame.PTS = 25;
+  assert.equal(promptContext(buildContext(league, snapshot, timestamp), '1').selectedRoster.projections[0][1], 25);
+  assert.equal(lookupPlayers(context, lookup({ availability: 'rostered', teamId: '2' })).players[0].statistics.perGame.PTS, 30);
+});
+
+test('team comparisons weight shooting by attempts, include bench, exclude IR and expose missing-stat coverage', () => {
+  const { context } = fixture();
+  context.rules.scoringCategories.push({ name: 'FG%' }, { name: 'FT%' });
+  context.players[0].statistics[1].fantasyPointsPerGame = 0;
+  context.players[2].teamId = '1'; context.players[2].lineupSlot = 'Bench';
+  Object.assign(context.players[2].statistics[0].perGame, { FGM: 1, FGA: 10, 'FG%': 0.1 });
+  const comparison = promptContext(context, '1').teamComparison;
+  assert.deepEqual(comparison.projections[0], { teamId: '1', players: 2, values: [30, 0.235, null], coverage: [2, 2, 0] });
+  assert.deepEqual(comparison.projections[1].values, [null, null, null]);
+  assert.deepEqual(comparison.current[0].coverage, [0, 0, 0]);
+});
+
+test('detailed lookup retains non-scoring stats and totals; compact results remain paginated across the entire pool', () => {
+  const { context } = fixture();
+  context.players[3].statistics[0].perGame.EXTRA = 123;
+  context.players[3].statistics[0].fantasyPointsPerGame = 40;
+  const compact = lookupPlayers(context, lookup());
+  assert.equal(compact.players[0].statistics.perGame.EXTRA, undefined);
+  assert.equal(compact.players[0].statistics.totals, undefined);
+  const detailed = lookupPlayers(context, lookup({ detail: 'all' }));
+  assert.equal(detailed.players[0].statistics.perGame.EXTRA, 123);
+  assert.equal(detailed.players[0].statistics.totals.PTS, 1050);
+  assert.equal(lookupPlayers(context, lookup({ sortBy: 'FPTS' })).players[0].statistics.perGame.FPTS, 40);
+  for (let n = 0; n < 40; n++) context.players.push({ ...context.players[3], id: `copy-${n}`, name: `Copy ${n}` });
+  const seen = []; let offset = 0;
+  while (offset !== null) { const page = lookupPlayers(context, lookup({ offset })); seen.push(...page.players.map(p => p.id)); offset = page.nextOffset; }
+  assert.equal(new Set(seen).size, 42);
+});
+
+test('server trims history independently and migrates the old expensive default without changing the API key', async () => {
+  const history = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: String(i).repeat(4000) }));
+  const { context } = fixture();
+  const kept = trimHistory(history);
+  assert.ok(kept.length <= 12);
+  assert.ok(kept.reduce((n, m) => n + m.content.length, 0) <= 12000);
+  assert.equal(kept[kept.length - 1].content, history[19].content.slice(0, 4000));
+  const input = buildChatInput({ context, teamId: '1', message: 'Follow-up', research: false, history });
+  assert.equal(input[input.length - 1].content, 'Follow-up');
+  assert.equal(modelFor({ OPENAI_MODEL: 'gpt-6-astra' }), 'gpt-6.1-sol');
+  assert.equal(modelFor({ OPENAI_ADVISOR_MODEL: 'gpt-6-luna' }), 'gpt-6-luna');
+  await withRouter({ config: () => ({ OPENAI_API_KEY: 'test', OPENAI_MODEL: 'gpt-6-astra' }), answer: async (request, options) => {
+    assert.equal(request.research, false);
+    assert.equal(options.model, 'gpt-6.1-sol');
+    return { answer: 'ok' };
+  } }, async ({ post, base }) => {
+    assert.equal((await (await fetch(base + '/chat/status?league=Fixture')).json()).model, 'gpt-6.1-sol');
+    assert.equal((await post({ league: 'Fixture', message: 'Hi' })).status, 200);
+  });
+});
+
+test('per-answer limits force a final answer after two lookup rounds and cap web searches across rounds', async () => {
+  const { context } = fixture(); let calls = 0;
+  const result = await answerQuestion({ context, teamId: '1', message: 'Find a trade', history: [], research: true }, {
+    apiKey: 'test', model: 'gpt-6.1-sol', createResponse: async body => {
+      calls++;
+      assert.equal(body.service_tier, 'default');
+      assert.equal(body.reasoning.effort, 'low');
+      assert.ok(body.max_output_tokens <= LIMITS.outputTokensPerCall);
+      if (calls === 3) {
+        assert.equal(body.tool_choice, 'none');
+        assert.ok(!body.tools.some(t => t.type === 'web_search'));
+        return { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'Trade advice.' }] }], usage: { input_tokens: 300, output_tokens: 100 } };
+      }
+      assert.equal(body.max_tool_calls, calls === 1 ? 2 : 1);
+      return { status: 'completed', output: [{ type: 'web_search_call' }, { type: 'function_call', name: 'lookup_league_players', call_id: `c${calls}`, arguments: JSON.stringify(lookup({ limit: 5 })) }],
+        usage: { input_tokens: 100, output_tokens: 100 } };
+    }
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.usage.modelCalls, 3);
+  assert.equal(result.usage.webSearchCalls, 2);
+  assert.equal(result.usage.inputTokens, 500);
+  assert.equal(result.usage.outputTokens, 300);
+});
+
+test('oversized prompts stop before spending and incomplete answers report usage already incurred', async () => {
+  const { context } = fixture(); let calls = 0;
+  await assert.rejects(answerQuestion({ context, history: [], message: 'x'.repeat(LIMITS.promptBytes), research: false }, {
+    apiKey: 'test', createResponse: async () => { calls++; }
+  }), error => error.code === 'ADVISOR_BUDGET_LIMIT' && error.usage.modelCalls === 0);
+  assert.equal(calls, 0);
+  await assert.rejects(answerQuestion({ context, history: [], message: 'Help', research: false }, {
+    apiKey: 'test', model: 'gpt-6.1-sol', createResponse: async () => ({ status: 'incomplete', output: [], usage: { input_tokens: 1000, output_tokens: 500 } })
+  }), error => error.code === 'INCOMPLETE_ADVISOR_RESPONSE' && error.usage.estimatedCostUsd === 0.0075);
+  await withRouter({ answer: async () => { const error = new Error('private error'); error.usage = { inputTokens: 100 }; error.model = 'test-model'; throw error; } }, async ({ post }) => {
+    const response = await post({ league: 'Fixture', message: 'Help' });
+    const body = await response.json();
+    assert.equal(body.usage.inputTokens, 100);
+    assert.ok(!JSON.stringify(body).includes('private error'));
+  });
+});
+
+test('cost estimates account for cached input, bill reasoning only once and never invent rates for unknown models', () => {
+  const usage = createUsage();
+  recordUsage(usage, { usage: { input_tokens: 1000, input_tokens_details: { cached_tokens: 800 }, output_tokens: 200, output_tokens_details: { reasoning_tokens: 150 } }, output: [{ type: 'web_search_call' }] });
+  assert.equal(reportedUsage(usage, 'gpt-6.1-sol').estimatedCostUsd, 0.01258);
+  assert.equal(reportedUsage(usage, 'custom-model').estimatedCostUsd, null);
+  assert.equal(usage.reasoningTokens, 150);
 });
 
 test('a missing server key disables chat before any model request', async () => {
