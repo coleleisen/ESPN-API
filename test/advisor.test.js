@@ -143,7 +143,7 @@ async function withRouter(overrides, run) {
   const app = express(); app.use(express.json());
   let calls = 0;
   app.use('/chat', createChatRouter({ loadLeague: async name => name === 'Fixture' ? league : null,
-    loadSnapshot: async () => snapshot, loadRankings: async () => null, config: () => ({ OPENAI_API_KEY: 'server-only' }),
+    loadSnapshot: async () => snapshot, loadRankings: async () => null, loadAdp: async () => null, config: () => ({ OPENAI_API_KEY: 'server-only' }),
     answer: async request => { calls++; return { answer: request.message, citations: [], context: request.context.metadata }; }, ...overrides }));
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -361,5 +361,33 @@ test('rankings status reads saved data, chat refreshes stale data, and the publi
     assert.deepEqual(options[1], { refresh: true });
     assert.equal((await post({ league: 'Fixture' }, '/chat/rankings/refresh')).status, 200);
     assert.deepEqual(options[2], { refresh: true, force: true });
+  });
+});
+
+test('Yahoo status, chat and independent public refresh attach current-season ADP without a paid model call', async () => {
+  const options = [], bbmOptions = [];
+  const data = { seasonId: 2027, yahooSeason: 2026, fetchedAt: timestamp.toISOString(),
+    players: [{ id: 'yahoo-1', name: 'Player 11', adp: 35.7, percentDrafted: 90 }] };
+  await withRouter({ loadAdp: async (year, settings) => { assert.equal(year, 2027); options.push(settings); return { data }; },
+    loadRankings: async (year, settings) => { bbmOptions.push(settings); return null; },
+    answer: async request => {
+      assert.equal(request.context.metadata.yahooAdp.seasonId, 2027);
+      assert.equal(request.context.yahooAdpByPlayerId.get('11').adp, 35.7);
+      return { answer: 'Uses current-season Yahoo ADP.' };
+    } }, async ({ base, post, calls }) => {
+    const status = await (await fetch(base + '/chat/status?league=Fixture')).json();
+    assert.equal(status.context.yahooAdp.matchedPlayers, 1);
+    assert.equal(status.refreshConfigured, false);
+    assert.deepEqual(options[0], {});
+    assert.equal((await post({ league: 'Fixture' }, '/chat/adp/refresh')).status, 200);
+    assert.equal(calls(), 0);
+    assert.deepEqual(options[1], { refresh: true, force: true });
+    assert.deepEqual(bbmOptions[1], {});
+    assert.equal((await post({ league: 'Fixture', message: 'Suggest a trade' })).status, 200);
+    assert.deepEqual(options[2], { refresh: true });
+    assert.deepEqual(bbmOptions[2], { refresh: true });
+    assert.equal((await post({ league: 'Fixture' }, '/chat/rankings/refresh')).status, 200);
+    assert.deepEqual(options[3], {});
+    assert.deepEqual(bbmOptions[3], { refresh: true, force: true });
   });
 });

@@ -1,15 +1,6 @@
 const { CATEGORY_COLUMNS } = require('./basketball-monster');
-const { SIX_HOURS } = require('./rankings-store');
-
-const normalize = name => name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-// Explicit cross-provider name variants; never use fuzzy surname matching.
-const aliases = { nicolasclaxton: 'nicclaxton', herbjones: 'herbertjones', alexandresarr: 'alexsarr' };
-const baseName = name => { const key = normalize(name.replace(/\s+(jr\.?|sr\.?|ii|iii|iv)$/i, '')); return aliases[key] || key; };
-function uniqueIndex(players, key) {
-  const map = new Map();
-  for (const p of players) { const name = key(p.name); map.set(name, map.has(name) ? null : p); }
-  return map;
-}
+const { SIX_HOURS } = require('./public-cache');
+const { matchPlayers, normalize, baseName } = require('./player-matching');
 
 function attachRankings(context, saved, now = new Date()) {
   if (context.metadata.sport !== 'basketball') return context;
@@ -17,16 +8,7 @@ function attachRankings(context, saved, now = new Date()) {
   const current = saved?.data?.datasets?.find(d => d.seasonId === year);
   const previous = saved?.data?.datasets?.find(d => d.seasonId === year - 1);
   const dataset = current?.players?.length ? current : previous?.players?.length ? previous : null;
-  const map = new Map();
-  if (dataset) {
-    const exact = uniqueIndex(dataset.players, p => normalize(p)), base = uniqueIndex(dataset.players, baseName);
-    const leagueExact = uniqueIndex(context.players, p => normalize(p)), leagueBase = uniqueIndex(context.players, baseName);
-    for (const player of context.players) {
-      const key = normalize(player.name), short = baseName(player.name);
-      const match = leagueExact.get(key) && exact.get(key) || leagueBase.get(short) && base.get(short);
-      if (match) map.set(player.id, match);
-    }
-  }
+  const map = dataset ? matchPlayers(context.players, dataset.players) : new Map();
   const warnings = [];
   if (saved?.lastError) warnings.push(saved.lastError);
   if (!current?.players?.length) warnings.push('Current-season public rankings are unavailable. Prior-season results, when present, are historical evidence, not projections.');

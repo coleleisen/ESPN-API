@@ -1,6 +1,7 @@
 const { AdvisorError } = require('./errors');
 const { playerRanking } = require('./ranking-context');
 const { CATEGORY_COLUMNS } = require('./basketball-monster');
+const { playerAdp } = require('./yahoo-adp-context');
 
 const categoryValues = categories => Object.fromEntries((categories || []).map(c => [c.name,
   c.number !== '' && c.number != null && Number.isFinite(Number(c.number)) ? Number(c.number) : null]));
@@ -83,6 +84,8 @@ function promptContext(context, teamId) {
     selectedRoster: teamId ? { teamId, statColumns: ['id', ...columns], units: 'per game; null = unavailable',
       players: selected.map(p => ({ id: p.id, lineupSlot: p.lineupSlot, eligibleSlots: p.eligibleSlots, injuryStatus: p.injuryStatus,
         ...(p.savedStatistics ? { savedStatistics: p.savedStatistics } : {}) })), projections: table('projections'), current: table('current'),
+      ...(context.metadata.yahooAdp?.available ? { yahooAdp: { columns: ['id', 'adp', 'percentDrafted'],
+        rows: selected.map(p => { const row = playerAdp(context, p); return [p.id, row?.adp ?? null, row?.percentDrafted ?? null]; }) } } : {}),
       ...(context.metadata.basketballMonster?.available ? { basketballMonster: {
         columns: ['id', 'rank', 'value', 'games', ...Object.keys(CATEGORY_COLUMNS)],
         rows: selected.map(p => { const rank = playerRanking(context, p); return [p.id, ...(rank
@@ -98,7 +101,7 @@ const TOOL = {
     teamId: { type: 'string', description: 'Exact team id, or empty for every team.' },
     availability: { type: 'string', enum: ['all', 'available', 'rostered'] },
     period: { type: 'string', enum: ['projections', 'current', 'previous', 'last7', 'last15', 'last30'] },
-    sortBy: { type: 'string', description: 'ESPN per-game stat or percentOwned. BBM_FIT sorts the mean Basketball Monster z-score in league categories excluding excludeCategories; BBM_VALUE uses public overall value; BBM_AST etc. sort a category z-score. BBM values are higher-is-better including TO and may be prior-season actuals; check source metadata.' },
+    sortBy: { type: 'string', description: 'ESPN per-game stat or percentOwned. YAHOO_ADP uses current-season public average draft position (lower is earlier/more valued; use ascending=true). BBM_FIT sorts the mean Basketball Monster z-score in league categories excluding excludeCategories; BBM_VALUE uses public overall value; BBM_AST etc. sort a category z-score. BBM values are higher-is-better including TO and may be prior-season actuals; check source metadata.' },
     excludeCategories: { type: 'array', items: { type: 'string', enum: Object.keys(CATEGORY_COLUMNS) }, maxItems: 9, description: 'Punted categories to exclude from BBM_FIT. Empty means all supported league categories.' },
     minGames: { type: 'integer', minimum: 0, maximum: 100, description: 'Minimum games in the BBM source season; 0 applies no sample filter and includes players missing BBM data. Prefer at least 10 for historical ranking searches; lower cautiously early in the season.' },
     ascending: { type: 'boolean' }, offset: { type: 'integer', minimum: 0, maximum: 10000 },
@@ -125,11 +128,15 @@ function lookupPlayers(context, args) {
   if (args.sortBy.startsWith('BBM_') && !context.metadata.basketballMonster?.available) {
     return { error: 'Basketball Monster rankings are unavailable. Use ESPN statistics and disclose the missing ranking data.' };
   }
+  if (args.sortBy === 'YAHOO_ADP' && !context.metadata.yahooAdp?.available) {
+    return { error: 'Current-season Yahoo ADP is unavailable. Use ESPN statistics and other available sources; do not substitute older Yahoo seasons.' };
+  }
   let players = context.players.filter(p => p.name.toLowerCase().includes(args.query.toLowerCase())
     && (!args.teamId || p.teamId === args.teamId)
     && (!(args.minGames > 0) || ranking(p)?.games >= args.minGames)
     && (args.availability === 'all' || (args.availability === 'rostered' ? Boolean(p.teamId) : !p.teamId && ['FREEAGENT', 'WAIVERS'].includes(p.status))));
   const value = player => {
+    if (args.sortBy === 'YAHOO_ADP') return playerAdp(context, player)?.adp;
     if (args.sortBy.startsWith('BBM_')) {
       const row = ranking(player);
       return args.sortBy === 'BBM_FIT' ? row?.fitScore : args.sortBy === 'BBM_VALUE' ? row?.overallValue : row?.zScores[args.sortBy.slice(4)];
@@ -153,6 +160,7 @@ function lookupPlayers(context, args) {
     return { id: p.id, name: p.name, teamId: p.teamId, status: p.status, lineupSlot: p.lineupSlot,
       eligibleSlots: p.eligibleSlots, injuryStatus: p.injuryStatus, percentOwned: round(p.percentOwned),
       waiverProcessAt: p.waiverProcessAt, savedStatistics: p.savedStatistics, statistics,
+      ...(context.metadata.yahooAdp ? { yahooAdp: playerAdp(context, p) } : {}),
       ...(context.metadata.basketballMonster ? { basketballMonster: ranking(p) } : {}) };
   });
   // Bound a result without losing access to later candidates: nextOffset uses
@@ -161,6 +169,7 @@ function lookupPlayers(context, args) {
   return { asOf: context.metadata.asOf, total: players.length, offset: args.offset,
     nextOffset: args.offset + resultPlayers.length < players.length ? args.offset + resultPlayers.length : null,
     period: args.period, statsUnits: 'totals = period totals; perGame = ESPN per-game averages; missing or empty statistics mean unavailable, not zero.',
+    ...(context.metadata.yahooAdp ? { yahooAdp: context.metadata.yahooAdp } : {}),
     ...(context.metadata.basketballMonster ? { basketballMonster: context.metadata.basketballMonster,
       fitScoreMethod: 'Mean of the supplied public category z-scores in fitCategories; app-computed, not an official BBM punt ranking or win probability. Positive TO z-score is already favorable. Compare only within this source season/basis.' } : {}), players: resultPlayers };
 }

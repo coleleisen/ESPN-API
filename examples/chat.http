@@ -14,14 +14,20 @@ Content-Type: application/json
 
 { "league": "DGFBL" }
 
-### Ask using ESPN ownership/projections and public BBM rankings
+### Refresh current-season Yahoo ADP (no ESPN login or OpenAI call)
+POST {{api}}/chat/adp/refresh
+Content-Type: application/json
+
+{ "league": "DGFBL" }
+
+### Ask using ESPN ownership/projections, public BBM rankings and current-season Yahoo ADP
 POST {{api}}/chat
 Content-Type: application/json
 
 {
   "league": "DGFBL",
   "teamId": "1",
-  "message": "I am punting assists. Use Basketball Monster z-scores and our ESPN projections to suggest pickups that strengthen my competitive categories. Explain the drop and data season.",
+  "message": "I am punting assists. Use Basketball Monster z-scores and our ESPN projections to suggest pickups that strengthen my competitive categories. Include current-season Yahoo ADP as a market-value signal. Explain the drop and each data source's season.",
   "research": false,
   "history": []
 }

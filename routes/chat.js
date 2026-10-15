@@ -9,6 +9,8 @@ const { modelFor, LIMITS } = require('../advisor/config');
 const { strategyRevision } = require('../advisor/instructions');
 const { getPublicRankings } = require('../advisor/rankings-store');
 const { attachRankings } = require('../advisor/ranking-context');
+const { getYahooAdp } = require('../advisor/yahoo-adp-store');
+const { attachYahooAdp } = require('../advisor/yahoo-adp-context');
 
 function validate(body, chat = true) {
   if (!body || typeof body.league !== 'string' || !body.league.trim() || body.league.length > 100) {
@@ -36,6 +38,7 @@ function createChatRouter(deps = {}) {
   const loadLeague = deps.loadLeague || (name => League.findOne({ leagueName: name }).lean().exec());
   const loadSnapshot = deps.loadSnapshot || (name => AdvisorSnapshot.findOne({ leagueName: name }).lean().exec());
   const loadRankings = deps.loadRankings || getPublicRankings;
+  const loadAdp = deps.loadAdp || getYahooAdp;
   const answer = deps.answer || answerQuestion;
   const refresh = deps.refresh || (async league => saveSnapshot(await collectAdvisorSnapshot(league)));
   const config = deps.config || (() => process.env);
@@ -58,12 +61,19 @@ function createChatRouter(deps = {}) {
     next();
   };
 
-  async function contextFor(name, rankingOptions = {}) {
+  async function attachSources(context, rankingOptions = {}, adpOptions = {}) {
+    if (context.metadata.sport !== 'basketball') return context;
+    const [rankings, adp] = await Promise.all([
+      loadRankings(context.metadata.seasonId, rankingOptions), loadAdp(context.metadata.seasonId, adpOptions)
+    ]);
+    return attachYahooAdp(attachRankings(context, rankings), adp);
+  }
+
+  async function contextFor(name, rankingOptions = {}, adpOptions = {}) {
     const league = await loadLeague(name);
     if (!league) throw new AdvisorError('LEAGUE_NOT_FOUND', 'This league is not in the database.', 404);
     const context = buildContext(league, await loadSnapshot(name));
-    return { league, context: league.sport === 'basketball'
-      ? attachRankings(context, await loadRankings(league.seasonId, rankingOptions)) : context };
+    return { league, context: await attachSources(context, rankingOptions, adpOptions) };
   }
 
   router.get('/status', async (req, res) => {
@@ -87,6 +97,16 @@ function createChatRouter(deps = {}) {
     finally { active--; }
   });
 
+  router.post('/adp/refresh', limitRequests, async (req, res) => {
+    active++;
+    try {
+      const { league } = validate(req.body, false);
+      const { context } = await contextFor(league, {}, { refresh: true, force: true });
+      res.json({ status: 'success', context: context.metadata });
+    } catch (error) { fail(res, error); }
+    finally { active--; }
+  });
+
   router.post('/refresh', limitRequests, async (req, res) => {
     let name;
     let started = false;
@@ -100,8 +120,7 @@ function createChatRouter(deps = {}) {
       if (!league) throw new AdvisorError('LEAGUE_NOT_FOUND', 'This league is not in the database.', 404);
       const snapshot = await refresh(league);
       const context = buildContext(league, snapshot);
-      res.json({ status: 'success', context: (league.sport === 'basketball'
-        ? attachRankings(context, await loadRankings(league.seasonId)) : context).metadata });
+      res.json({ status: 'success', context: (await attachSources(context)).metadata });
     } catch (error) { fail(res, error); }
     finally { if (started) { refreshing.delete(name); active--; } }
   });
@@ -116,7 +135,7 @@ function createChatRouter(deps = {}) {
       const request = validate(req.body);
       const env = config();
       if (!env.OPENAI_API_KEY) throw new AdvisorError('OPENAI_NOT_CONFIGURED', 'Add OPENAI_API_KEY to the API server environment to enable the advisor.', 503);
-      const { context } = await contextFor(request.league, { refresh: true });
+      const { context } = await contextFor(request.league, { refresh: true }, { refresh: true });
       if (request.teamId && !context.teams.some(t => t.id === request.teamId)) throw new AdvisorError('TEAM_NOT_FOUND', 'Select a team from this league.', 400);
       res.json({ status: 'success', ...(await answer({ ...request, context }, {
         apiKey: env.OPENAI_API_KEY, model: modelFor(env), signal: controller.signal
