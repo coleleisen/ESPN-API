@@ -7,6 +7,8 @@ const { collectAdvisorSnapshot } = require('../advisor/espn');
 const { AdvisorError } = require('../advisor/errors');
 const { modelFor, LIMITS } = require('../advisor/config');
 const { strategyRevision } = require('../advisor/instructions');
+const { getPublicRankings } = require('../advisor/rankings-store');
+const { attachRankings } = require('../advisor/ranking-context');
 
 function validate(body, chat = true) {
   if (!body || typeof body.league !== 'string' || !body.league.trim() || body.league.length > 100) {
@@ -33,6 +35,7 @@ function validate(body, chat = true) {
 function createChatRouter(deps = {}) {
   const loadLeague = deps.loadLeague || (name => League.findOne({ leagueName: name }).lean().exec());
   const loadSnapshot = deps.loadSnapshot || (name => AdvisorSnapshot.findOne({ leagueName: name }).lean().exec());
+  const loadRankings = deps.loadRankings || getPublicRankings;
   const answer = deps.answer || answerQuestion;
   const refresh = deps.refresh || (async league => saveSnapshot(await collectAdvisorSnapshot(league)));
   const config = deps.config || (() => process.env);
@@ -55,10 +58,12 @@ function createChatRouter(deps = {}) {
     next();
   };
 
-  async function contextFor(name) {
+  async function contextFor(name, rankingOptions = {}) {
     const league = await loadLeague(name);
     if (!league) throw new AdvisorError('LEAGUE_NOT_FOUND', 'This league is not in the database.', 404);
-    return { league, context: buildContext(league, await loadSnapshot(name)) };
+    const context = buildContext(league, await loadSnapshot(name));
+    return { league, context: league.sport === 'basketball'
+      ? attachRankings(context, await loadRankings(league.seasonId, rankingOptions)) : context };
   }
 
   router.get('/status', async (req, res) => {
@@ -70,6 +75,16 @@ function createChatRouter(deps = {}) {
         refreshConfigured: Boolean(env.ESPN_ADVISOR_SESSION_FILE), model: modelFor(env), limits: LIMITS, strategyRevision,
         context: context.metadata, teams: context.teams.map(t => ({ id: t.id, name: t.name })) });
     } catch (error) { fail(res, error); }
+  });
+
+  router.post('/rankings/refresh', limitRequests, async (req, res) => {
+    active++;
+    try {
+      const { league } = validate(req.body, false);
+      const { context } = await contextFor(league, { refresh: true, force: true });
+      res.json({ status: 'success', context: context.metadata });
+    } catch (error) { fail(res, error); }
+    finally { active--; }
   });
 
   router.post('/refresh', limitRequests, async (req, res) => {
@@ -84,7 +99,9 @@ function createChatRouter(deps = {}) {
       const league = await loadLeague(name);
       if (!league) throw new AdvisorError('LEAGUE_NOT_FOUND', 'This league is not in the database.', 404);
       const snapshot = await refresh(league);
-      res.json({ status: 'success', context: buildContext(league, snapshot).metadata });
+      const context = buildContext(league, snapshot);
+      res.json({ status: 'success', context: (league.sport === 'basketball'
+        ? attachRankings(context, await loadRankings(league.seasonId)) : context).metadata });
     } catch (error) { fail(res, error); }
     finally { if (started) { refreshing.delete(name); active--; } }
   });
@@ -99,7 +116,7 @@ function createChatRouter(deps = {}) {
       const request = validate(req.body);
       const env = config();
       if (!env.OPENAI_API_KEY) throw new AdvisorError('OPENAI_NOT_CONFIGURED', 'Add OPENAI_API_KEY to the API server environment to enable the advisor.', 503);
-      const { context } = await contextFor(request.league);
+      const { context } = await contextFor(request.league, { refresh: true });
       if (request.teamId && !context.teams.some(t => t.id === request.teamId)) throw new AdvisorError('TEAM_NOT_FOUND', 'Select a team from this league.', 400);
       res.json({ status: 'success', ...(await answer({ ...request, context }, {
         apiKey: env.OPENAI_API_KEY, model: modelFor(env), signal: controller.signal

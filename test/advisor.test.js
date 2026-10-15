@@ -143,7 +143,7 @@ async function withRouter(overrides, run) {
   const app = express(); app.use(express.json());
   let calls = 0;
   app.use('/chat', createChatRouter({ loadLeague: async name => name === 'Fixture' ? league : null,
-    loadSnapshot: async () => snapshot, config: () => ({ OPENAI_API_KEY: 'server-only' }),
+    loadSnapshot: async () => snapshot, loadRankings: async () => null, config: () => ({ OPENAI_API_KEY: 'server-only' }),
     answer: async request => { calls++; return { answer: request.message, citations: [], context: request.context.metadata }; }, ...overrides }));
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -340,5 +340,26 @@ test('paid chat requests are rate limited', async () => {
     assert.equal(limited.status, 429);
     assert.equal(limited.headers.get('retry-after'), '60');
     assert.equal(calls(), 20);
+  });
+});
+
+test('rankings status reads saved data, chat refreshes stale data, and the public refresh does not require ESPN credentials', async () => {
+  const options = [];
+  const data = { checkedAt: timestamp.toISOString(), datasets: [{ seasonId: 2026, fetchedAt: timestamp.toISOString(),
+    sourceUrl: 'https://basketballmonster.com/playerrankings.aspx?ds=160', settings: 'public',
+    players: [{ id: 'bbm-11', name: 'Player 11', rank: 8, overallValue: 0.3, games: 65, zScores: { PTS: 1.2 } }] }] };
+  await withRouter({ loadRankings: async (year, settings) => { assert.equal(year, 2027); options.push(settings); return { data }; },
+    answer: async request => {
+      assert.equal(request.context.metadata.basketballMonster.seasonId, 2026);
+      assert.equal(request.context.bbmByPlayerId.get('11').rank, 8);
+      return { answer: 'Uses historical BBM values.' };
+    } }, async ({ base, post }) => {
+    const status = await (await fetch(base + '/chat/status?league=Fixture')).json();
+    assert.equal(status.context.basketballMonster.matchedPlayers, 1);
+    assert.deepEqual(options[0], {});
+    assert.equal((await post({ league: 'Fixture', message: 'Suggest a trade' })).status, 200);
+    assert.deepEqual(options[1], { refresh: true });
+    assert.equal((await post({ league: 'Fixture' }, '/chat/rankings/refresh')).status, 200);
+    assert.deepEqual(options[2], { refresh: true, force: true });
   });
 });
